@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vehicle Data Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        table, th, td {
+            border: 1px solid #dddddd;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        .controls label {
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        .controls input, .controls select, .controls button {
+            margin-right: 20px;
+            padding: 5px;
+            font-size: 16px;
+        }
+        /* Modal (popup) styles */
+        #loadingModal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        #loadingModalContent {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 18px;
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <h1>Vehicle Data Report</h1>
+    <div class="controls">
+        <label for="unitGroup">Unit Group:</label>
+        <select id="unitGroup">
+            <option value="">Loading...</option>
+        </select>
+
+         <label for="unit">Unit Group:</label>
+        <select id="units">
+            <option value="">Loading...</option>
+        </select>
+
+        <label for="startDate">Start Date:</label>
+        <input type="datetime-local" id="startDate">
+
+        <label for="endDate">End Date:</label>
+        <input type="datetime-local" id="endDate">
+
+        <button id="searchBtn">Search</button>
+        <button id="exportBtn">Export to Excel</button>
+    </div>
+
+    <table id="vehicleData">
+        <thead>
+            <tr>
+                <th>Plate Number</th>
+                <th>SM Code</th>
+                <th>Driver Name</th>
+                <th>Beginning</th>
+                <th>End</th>
+                <th>Duration</th>
+                <th>Total Mileage</th>
+                <th>Idling > 5 MN (Minute)</th>
+                <th>Idling Counting of over 5 Minutes</th>
+                <th>Over Speed 90 > 3 Minutes</th>
+                <th>Harsh Braking</th>
+                <th>Harsh Acceleration</th>
+                <th>Harsh Cornering</th>
+                <th>Count Engine hours of more than 2 hours</th>
+                <th>Count Engine hours of more than 4 hours</th>
+                <th>Stop Longer than 1 hours</th>
+                <th>Stop Longer than 2 hours</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Data will be dynamically inserted here -->
+        </tbody>
+    </table>
+
+    <!-- Loading Modal -->
+    <div id="loadingModal">
+        <div id="loadingModalContent">
+            Loading data, please wait...
+        </div>
+    </div>
+
+    <script>
+        async function loadUnitGroups() {
+            try {
+                const response = await fetch('/get-unit-groups');
+                const unitGroups = await response.json();
+                const dropdown = document.getElementById('unitGroup');
+
+                dropdown.innerHTML = '<option value="">Select a group...</option>'; // Reset options
+
+                unitGroups.forEach(group => {
+                    const option = document.createElement('option');
+                    option.value = group.id;
+                    option.textContent = group.nm;
+                    dropdown.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading unit groups:', error);
+                alert('Failed to load unit groups.');
+            }
+        }
+           async function loadUnit() {
+            try {
+                const response = await fetch('/get-units');
+                const getUnits = await response.json();
+                const dropdown = document.getElementById('units');
+                dropdown.innerHTML = '<option value="">Select a units...</option>'; // Reset options
+
+                getUnits.forEach(units => {
+                    const option = document.createElement('option');
+                    option.value = units.id;
+                    option.textContent = units.nm;
+                    dropdown.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading unit units:', error);
+                alert('Failed to load unit units.');
+            }
+        }
+
+
+        function setDefaultDateTimes() {
+            const startDateInput = document.getElementById('startDate');
+            const endDateInput = document.getElementById('endDate');
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+
+            const startDateTime = `${year}-${month}-${day}T00:00`;
+            const endDateTime = `${year}-${month}-${day}T23:59`;
+
+            startDateInput.value = startDateTime;
+            endDateInput.value = endDateTime;
+        }
+
+        async function fetchData() {
+            const unitGroup = document.getElementById('unitGroup').value;
+            const units = document.getElementById('units').value;
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+
+            // Validate input dates
+            if (!startDate || !endDate) {
+                alert('Please select both start and end dates.');
+                return;
+            }
+            
+        if (!unitGroup && !units) {
+            alert("Please select at least one (unit group or unit).");
+            return;
+        }
+   
+            const loadingModal = document.getElementById('loadingModal');
+            loadingModal.style.display = 'block';
+
+            // Build the request URL with query parameters
+            const requestUrl = `/map-rows-and-subrows?units=${units}&unitGroup=${unitGroup}&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
+
+            try {
+                const response = await fetch(requestUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`Error: ${response.status} ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const tbody = document.getElementById('vehicleData').getElementsByTagName('tbody')[0];
+                tbody.innerHTML = '';  // Clear previous data
+
+                if (data.length === 0) {
+                    alert('No data found for the selected parameters.');
+                    return;
+                }
+
+                data.forEach(row => {
+                    const tr = document.createElement('tr');
+
+                    for (const key in row) {
+                        const td = document.createElement('td');
+                        td.textContent = row[key];
+                        tr.appendChild(td);
+                    }
+
+                    tbody.appendChild(tr);
+                });
+            } catch (error) {
+                alert('An error occurred while fetching data. Please try again.');
+                console.error('Error fetching data:', error);
+            } finally {
+                // Hide loading modal
+                loadingModal.style.display = 'none';
+            }
+        }
+
+        function exportToExcel() {
+            const table = document.getElementById('vehicleData');
+            const rows = [...table.rows].map(row => [...row.cells].map(cell => cell.textContent));
+            const csvContent = "data:text/csv;charset=utf-8," 
+                + rows.map(row => row.join(",")).join("\n");
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "vehicle_data_report.csv");
+            document.body.appendChild(link);
+            link.click();
+        }
+
+        document.getElementById('searchBtn').addEventListener('click', fetchData);
+        document.getElementById('exportBtn').addEventListener('click', exportToExcel);
+
+        window.onload = function() {
+            setDefaultDateTimes();  // Set default date and time on page load
+            loadUnitGroups();   
+             loadUnit();   
+            fetchData();            
+        };
+    </script>
+</body>
+</html>
